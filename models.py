@@ -1,56 +1,42 @@
-from __future__ import annotations
-
 from enum import Enum
 from typing import List, Optional
+from pydantic import BaseModel
 
-from pydantic import BaseModel, Field, HttpUrl
+class FactStatus(Enum):
+    VERIFIED = "Verified"
+    INACCURATE = "Inaccurate"
+    FALSE = "False"
 
-
-class ClaimType(str, Enum):
+class ClaimType(Enum):
     STATISTIC = "Statistic"
     DATE = "Date"
     PERCENTAGE = "Percentage"
     FINANCIAL = "Financial"
     TECHNICAL = "Technical"
-    NAMED_ENTITY = "Named entity"
-    GENERAL = "General factual claim"
-
-
-class FactStatus(str, Enum):
-    VERIFIED = "Verified"
-    INACCURATE = "Inaccurate"
-    FALSE = "False"
-
-
-class ExtractedPage(BaseModel):
-    page_number: int
-    text: str
-
+    ENTITY = "Named Entity"
+    OTHER = "Other"
 
 class Claim(BaseModel):
     id: int
     text: str
     page_number: Optional[int] = None
-    claim_type: ClaimType = ClaimType.GENERAL
-    query: str = ""
-
+    claim_type: ClaimType = ClaimType.OTHER
+    query: Optional[str] = None
 
 class Evidence(BaseModel):
-    title: str = "Untitled source"
-    url: HttpUrl
-    snippet: str = ""
-    source_domain: str = ""
-    excerpt: str = ""
-
+    title: str
+    url: str
+    snippet: Optional[str] = None
+    excerpt: Optional[str] = None
+    source_domain: Optional[str] = None
 
 class FactCheckResult(BaseModel):
     claim: Claim
     status: FactStatus
-    confidence: int = Field(ge=0, le=100)
+    confidence: int
     correct_fact: str
     rationale: str
-    evidence: List[Evidence] = Field(default_factory=list)
-
+    evidence: List[Evidence]
 
 class FactCheckReport(BaseModel):
     file_name: str
@@ -60,4 +46,3 @@ class FactCheckReport(BaseModel):
     false: int
     average_confidence: float
     results: List[FactCheckResult]
-
