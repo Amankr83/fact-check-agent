@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import plotly.express as px
 import streamlit as st
 
 from config import settings
@@ -73,10 +72,17 @@ def main() -> None:
         return
 
     render_file_panel(uploaded)
+    consent = st.checkbox(
+        "I understand extracted claim text will be sent to external search providers for live evidence retrieval.",
+        value=False,
+    )
 
     run = st.button("Run fact check", type="primary", use_container_width=True)
+    if run and not consent:
+        st.warning("Please confirm external evidence-search consent before running live verification.")
+        return
     if not run and "last_report" not in st.session_state:
-        st.info("Ready to analyze. Click **Run fact check** to extract claims and gather live evidence.")
+        st.info("Ready to analyze. Confirm consent, then click **Run fact check** to extract claims and gather live evidence.")
         return
 
     if run:
@@ -261,24 +267,8 @@ def render_report(report) -> None:
 
     chart_col, table_col = st.columns([1.05, 1])
     with chart_col:
-        chart_df = df.groupby("status", as_index=False).size()
-        fig = px.bar(
-            chart_df,
-            x="status",
-            y="size",
-            color="status",
-            text="size",
-            color_discrete_map=STATUS_COLORS,
-        )
-        fig.update_layout(
-            showlegend=False,
-            yaxis_title="Claims",
-            xaxis_title="",
-            plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            margin=dict(l=10, r=10, t=30, b=10),
-        )
-        st.plotly_chart(fig, use_container_width=True)
+        chart_df = df.groupby("status").size().rename("Claims")
+        st.bar_chart(chart_df, height=260)
     with table_col:
         st.dataframe(
             df[["claim_id", "claim_type", "status", "confidence"]],

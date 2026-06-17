@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 
 import requests
 from bs4 import BeautifulSoup
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 
 from config import settings
 from models import Evidence
@@ -38,11 +38,48 @@ def enrich_evidence(evidence: Evidence) -> Evidence:
         )
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
-        for tag in soup(["script", "style", "noscript", "svg"]):
+        for tag in soup(
+            [
+                "script",
+                "style",
+                "noscript",
+                "svg",
+                "nav",
+                "header",
+                "footer",
+                "aside",
+                "form",
+                "table",
+                "sup",
+            ]
+        ):
             tag.decompose()
-        text = " ".join(soup.get_text(" ").split())
-        evidence.excerpt = text[:1200]
+        evidence.excerpt = _extract_readable_text(soup)
     except Exception:
         evidence.excerpt = ""
     return evidence
 
+
+def _extract_readable_text(soup: BeautifulSoup) -> str:
+    chunks = []
+    description = soup.find("meta", attrs={"name": "description"})
+    if description and description.get("content"):
+        chunks.append(description["content"])
+
+    main = soup.find("main") or soup.find("article") or soup.body or soup
+    for tag in main.find_all(["h1", "h2", "p", "li"], limit=80):
+        text = " ".join(tag.get_text(" ").split())
+        if len(text) >= 45:
+            chunks.append(text)
+
+    if not chunks:
+        chunks.append(" ".join(main.get_text(" ").split()))
+
+    seen = set()
+    deduped = []
+    for chunk in chunks:
+        normalized = chunk.lower()
+        if normalized not in seen:
+            seen.add(normalized)
+            deduped.append(chunk)
+    return " ".join(deduped)[:2500]

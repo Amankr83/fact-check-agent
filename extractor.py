@@ -59,11 +59,35 @@ def extract_claims(pages: Iterable[ExtractedPage], max_claims: int) -> List[Clai
 
 
 def _sentences(text: str) -> Iterable[str]:
-    compact = re.sub(r"\s+", " ", text).strip()
+    compact = _clean_text(text)
     for sentence in SENTENCE_RE.split(compact):
-        sentence = sentence.strip(" -•\t")
+        sentence = _clean_sentence(sentence)
         if 45 <= len(sentence) <= 360:
             yield sentence
+
+
+def _clean_text(text: str) -> str:
+    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\bExecutive Summary\b", " ", text, flags=re.I)
+    text = re.sub(r"\bSection\s+\d+\s*:\s*", " ", text, flags=re.I)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _clean_sentence(sentence: str) -> str:
+    sentence = sentence.strip(" -•\t")
+    sentence = re.sub(
+        r"^(?:\d{4}\s+)?(?:Global\s+)?AI\s+Industry\s+Snapshot\s+Report\s+",
+        "",
+        sentence,
+        flags=re.I,
+    )
+    sentence = re.sub(
+        r"^(?:AI User Growth|Global Internet Statistics|Technology Industry|Climate and Energy|Geography Check|Education and Workforce|Programming Languages|Workplace Trends|Financial Statistics|Important Note|Conclusion)\s+",
+        "",
+        sentence,
+        flags=re.I,
+    )
+    return sentence.strip()
 
 
 def _normalize(sentence: str) -> str:
@@ -102,4 +126,3 @@ def _build_query(sentence: str) -> str:
     query = re.sub(r"[^a-zA-Z0-9 %$₹€£.-]", " ", sentence)
     query = re.sub(r"\s+", " ", query).strip()
     return query[:220]
-

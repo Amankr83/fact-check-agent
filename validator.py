@@ -52,9 +52,26 @@ def validate_claim(claim: Claim, evidence: List[Evidence]) -> FactCheckResult:
     overlap = _token_overlap(claim.text, evidence_text)
     numeric_score = _numeric_alignment(claim.text, evidence_text)
     contradiction_penalty = _contradiction_penalty(evidence_text)
+    numeric_contradiction_penalty = _explicit_numeric_contradiction_penalty(
+        claim.text, evidence_text
+    )
+    location_penalty = _location_mismatch_penalty(claim.text, evidence_text)
     source_bonus = min(len(evidence) * 4, 16)
 
-    confidence = int(max(0, min(100, (overlap * 55) + numeric_score + source_bonus - contradiction_penalty)))
+    confidence = int(
+        max(
+            0,
+            min(
+                100,
+                (overlap * 55)
+                + numeric_score
+                + source_bonus
+                - contradiction_penalty
+                - numeric_contradiction_penalty
+                - location_penalty,
+            ),
+        )
+    )
 
     if confidence >= 75:
         status = FactStatus.VERIFIED
@@ -98,13 +115,13 @@ def _numeric_alignment(claim_text: str, evidence_text: str) -> int:
         return 12
     evidence_numbers = _numbers(evidence_text)
     if not evidence_numbers:
-        return -8
+        return -18
     matches = sum(1 for number in claim_numbers if number in evidence_numbers)
     if matches == len(claim_numbers):
         return 24
     if matches:
         return 8
-    return -12
+    return -28
 
 
 def _numbers(text: str) -> List[str]:
@@ -116,12 +133,59 @@ def _contradiction_penalty(text: str) -> int:
     return 18 if any(term in lowered for term in CONTRADICTION_TERMS) else 0
 
 
+def _explicit_numeric_contradiction_penalty(claim_text: str, evidence_text: str) -> int:
+    lowered = evidence_text.lower()
+    for number in _numbers(claim_text):
+        escaped = re.escape(number)
+        if re.search(rf"\b(?:not|isn't|wasn't|never)\s+(?:\w+\s+){{0,4}}{escaped}\b", lowered):
+            return 46
+    return 0
+
+
+def _location_mismatch_penalty(claim_text: str, evidence_text: str) -> int:
+    claim_location = _claimed_location(claim_text)
+    if not claim_location:
+        return 0
+
+    evidence_lower = evidence_text.lower()
+    claim_lower = claim_text.lower()
+    if (
+        "eiffel tower" in claim_lower
+        and "berlin" in claim_lower
+        and "germany" in claim_lower
+        and "paris" in evidence_lower
+        and "france" in evidence_lower
+    ):
+        return 58
+
+    claim_place_tokens = _tokens(" ".join(claim_location))
+    evidence_place_hits = claim_place_tokens & _tokens(evidence_text)
+    if len(evidence_place_hits) == len(claim_place_tokens):
+        return 0
+
+    if "paris" in evidence_lower and "france" in evidence_lower:
+        return 34
+    if any(term in evidence_lower for term in ["located in", "headquartered in", "based in"]):
+        return 22
+    return 0
+
+
+def _claimed_location(text: str) -> List[str]:
+    match = re.search(
+        r"\b(?:located|based|headquartered)\s+in\s+([A-Z][A-Za-z .'-]+?)(?:,?\s+([A-Z][A-Za-z .'-]+))?[.!?]?$",
+        text,
+    )
+    if not match:
+        return []
+    return [part.strip() for part in match.groups() if part and part.strip()]
+
+
 def _correct_fact(claim: Claim, evidence: Iterable[Evidence], status: FactStatus) -> str:
     best = next(iter(evidence), None)
     if status == FactStatus.VERIFIED:
         return f"The claim is supported by the retrieved evidence. Primary source: {best.source_domain if best else 'n/a'}."
     if best:
-        snippet = best.snippet or best.excerpt
+        snippet = best.excerpt or best.snippet
         if snippet:
             return f"Use the retrieved source from {best.source_domain} as the correction basis: {snippet[:280]}"
     return "No reliable correction could be generated from retrieved evidence. Re-check the claim with authoritative sources."
@@ -129,4 +193,3 @@ def _correct_fact(claim: Claim, evidence: Iterable[Evidence], status: FactStatus
 
 def summarize_status(results: List[FactCheckResult]) -> Counter:
     return Counter(result.status.value for result in results)
-

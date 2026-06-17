@@ -12,6 +12,7 @@ FactCheck Agent is a production-oriented Streamlit web app that verifies factual
 - Evidence cards with source links
 - Downloadable Markdown, CSV, and JSON reports
 - Deterministic baseline that works without paid API keys
+- User consent checkbox before extracted claim text is sent to external search providers
 
 ## Installation
 
@@ -28,6 +29,8 @@ streamlit run app.py
 ```
 
 Open the local URL shown by Streamlit, upload a PDF, choose the number of claims and evidence results, then run the fact check.
+
+Because live verification uses web search, the app asks for confirmation before sending extracted claim text to external search providers.
 
 ## Optional Configuration
 
@@ -70,4 +73,3 @@ Placeholder:
 - Add persistent project history
 - Add background jobs for long PDFs
 - Add user authentication and team workspaces
-
