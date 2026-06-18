@@ -5,6 +5,8 @@ from collections import Counter
 from typing import Iterable, List, Set
 
 from models import Claim, Evidence, FactCheckResult, FactStatus
+from config import settings
+import json
 
 
 STOPWORDS = {
@@ -49,6 +51,57 @@ CONTRADICTION_TERMS = {
 
 
 def validate_claim(claim: Claim, evidence: List[Evidence]) -> FactCheckResult:
+    if settings.openai_api_key:
+        try:
+            return _validate_with_llm(claim, evidence)
+        except Exception as e:
+            print(f"LLM validation failed: {e}. Falling back to heuristics.")
+            
+    return _validate_with_heuristics(claim, evidence)
+
+
+def _validate_with_llm(claim: Claim, evidence: List[Evidence]) -> FactCheckResult:
+    from openai import OpenAI
+    client = OpenAI(api_key=settings.openai_api_key)
+    
+    evidence_text = "\n".join(f"- {e.title}: {e.snippet}" for e in evidence[:4])
+    
+    prompt = f"""
+    You are an expert fact-checker. 
+    Claim: "{claim.text}"
+    
+    Live Web Evidence:
+    {evidence_text}
+    
+    Evaluate the claim against the evidence. 
+    Return a JSON object with strictly these keys:
+    - status: exactly one of "Verified", "Inaccurate", or "False"
+    - confidence: integer from 0 to 100 representing how confident you are in your verdict
+    - rationale: 1-sentence explanation of why
+    - correct_fact: the actual truth based on the evidence (if False/Inaccurate), or confirmation if Verified
+    """
+    
+    response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": prompt}],
+        response_format={"type": "json_object"},
+        temperature=0.0
+    )
+    
+    result = json.loads(response.choices[0].message.content)
+    status_map = {"Verified": FactStatus.VERIFIED, "Inaccurate": FactStatus.INACCURATE, "False": FactStatus.FALSE}
+    
+    return FactCheckResult(
+        claim=claim,
+        status=status_map.get(result.get("status", "False"), FactStatus.FALSE),
+        confidence=result.get("confidence", 0),
+        correct_fact=result.get("correct_fact", "Could not verify."),
+        rationale=result.get("rationale", "No rationale provided."),
+        evidence=evidence,
+    )
+
+
+def _validate_with_heuristics(claim: Claim, evidence: List[Evidence]) -> FactCheckResult:
     evidence_text = " ".join(
         f"{item.title} {item.snippet} {item.excerpt}" for item in evidence
     )
